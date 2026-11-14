@@ -176426,7 +176426,7 @@ SCES-01237:
     - DisableAutoAnalogMode # Analog sticks do nothing.
     - ForcePGXPCPUMode # Some vertices are fudged by the game.
   settings:
-    gpuPGXPTolerance: 3 # Fixes spiky polygons when characters go offscreen.
+    gpuPGXPDepthThreshold: 512 # Stage and characters are separate layers, close in depth in close-ups.
   metadata:
     publisher: "Sony"
     developer: "Namco"
@@ -176450,7 +176450,7 @@ SCED-01146:
     - DisableAutoAnalogMode # Analog sticks do nothing.
     - ForcePGXPCPUMode # Some vertices are fudged by the game.
   settings:
-    gpuPGXPTolerance: 3 # Fixes spiky polygons when characters go offscreen.
+    gpuPGXPDepthThreshold: 512 # Stage and characters are separate layers, close in depth in close-ups.
 SCED-01384:
   name: "Tekken 3 (Demo)"
   saveName: "Tekken 3 (France) (Demo)"
@@ -176460,7 +176460,7 @@ SCED-01384:
     - DisableAutoAnalogMode # Analog sticks do nothing.
     - ForcePGXPCPUMode # Some vertices are fudged by the game.
   settings:
-    gpuPGXPTolerance: 3 # Fixes spiky polygons when characters go offscreen.
+    gpuPGXPDepthThreshold: 512 # Stage and characters are separate layers, close in depth in close-ups.
 SLPS-91202:
   name: "Tekken 3"
   localizedName: "鉄拳３"
@@ -176473,7 +176473,7 @@ SLPS-91202:
     - DisableAutoAnalogMode # Analog sticks do nothing.
     - ForcePGXPCPUMode # Some vertices are fudged by the game.
   settings:
-    gpuPGXPTolerance: 3 # Fixes spiky polygons when characters go offscreen.
+    gpuPGXPDepthThreshold: 512 # Stage and characters are separate layers, close in depth in close-ups.
   metadata:
     publisher: "Namco"
     developer: "Namco"
@@ -176503,7 +176503,7 @@ SCPS-45213:
     - DisableAutoAnalogMode # Analog sticks do nothing.
     - ForcePGXPCPUMode # Some vertices are fudged by the game.
   settings:
-    gpuPGXPTolerance: 3 # Fixes spiky polygons when characters go offscreen.
+    gpuPGXPDepthThreshold: 512 # Stage and characters are separate layers, close in depth in close-ups.
   codes:
     - SCPS-45213
     - SCPS-45215
@@ -176536,7 +176536,7 @@ SLUS-00402:
     - DisableAutoAnalogMode # Analog sticks do nothing.
     - ForcePGXPCPUMode # Some vertices are fudged by the game.
   settings:
-    gpuPGXPTolerance: 3 # Fixes spiky polygons when characters go offscreen.
+    gpuPGXPDepthThreshold: 512 # Stage and characters are separate layers, close in depth in close-ups.
   metadata:
     publisher: "Namco"
     developer: "Namco"
