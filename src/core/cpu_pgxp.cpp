@@ -1563,6 +1563,26 @@ ALWAYS_INLINE_RELEASE void CPU::PGXP::CPU_BITWISE(Instruction instr, u32 rdVal, 
   else
     y = static_cast<float>(HIWORD_S16(rdVal));
 
+  // Tekken 3 halves packed vertices to average them with sra 1, then clears the bit of Y that the shift moved into X
+  // with and 0xFFFF7FFF. The shift keeps the whole value, so the cleared bits are the remainder of Y, and it is only
+  // the exact half with them. X keeps its offset from native, which is otherwise lost when its top bit was set. Only
+  // for 3D values, clearing the top bits of a shift by 1-4, and when Y isn't only sign bits, otherwise the shift has
+  // put the fraction of Y in X. An unshifted vertex with negative X looks the same, and its sign extension is taken
+  // as Y's remainder, but no game has been seen to mask one like this.
+  const bool rt_is_mask = (HIWORD_U16(rtVal) == 0xFFFF);
+  const u32 maskVal = rt_is_mask ? rtVal : rsVal;
+  const u32 srcVal = rt_is_mask ? rsVal : rtVal;
+  const PGXPValue& src = rt_is_mask ? prsVal : prtVal;
+  const u16 mask = LOWORD_U16(maskVal);
+  if (instr.r.funct == InstructionFunct::and_ && HIWORD_U16(maskVal) == 0xFFFF && mask >= 0x0FFF && mask != 0xFFFF &&
+      (mask & (mask + 1)) == 0 && HIWORD_S16(srcVal) != 0 && HIWORD_S16(srcVal) != -1 &&
+      (src.flags & VALID_ALL) == VALID_ALL)
+  {
+    x = static_cast<float>(LOWORD_S16(rdVal)) + (src.x - static_cast<float>(LOWORD_S16(srcVal)));
+    y = src.y + static_cast<float>(LOWORD_U16(srcVal) & ~mask) / static_cast<float>(USHRT_MAX + 1);
+    x_src = y_src = &src;
+  }
+
   // An exact zero has no precision to give, e.g. to a not, but a zero result from one is exact. Except with NOR, where
   // the result is only zero because of the other value.
   const bool rs_zero = IsExactZero(prsVal, rsVal);

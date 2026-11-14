@@ -607,6 +607,64 @@ TEST_F(PGXPTest, BitwisePrefersPreciseSource)
   EXPECT_NEAR(Get(R_V1).y, 100.5, TOLERANCE);
 }
 
+TEST_F(PGXPTest, ClearingShiftedBitOfPackedHalvesKeepsExactHalves)
+{
+  // Tekken 3 averages packed vertices with sra 1 and and 0xFFFF7FFF. When Y is odd, its remainder is the bit cleared.
+  for (const u32 x : {100u, 101u, 32767u})
+  {
+    for (const u32 y : {220u, 221u, 0xFF21u})
+    {
+      for (const bool swapped : {false, true})
+      {
+        for (const u32 dest : {R_V0, R_V1})
+        {
+          const u32 value = (y << 16) | x;
+          const u32 shifted = static_cast<u32>(static_cast<s32>(value) >> 1);
+          Set(R_V0, value, static_cast<float>(x) + 0.25f, static_cast<float>(static_cast<s16>(y)) + 0.5f);
+          CPU::PGXP::CPU_SRA(R(0, R_V0, R_V0, 1), value);
+          Set(R_A0, 0xFFFF7FFF, 32767.0f, -1.0f, VALID_XY, 0.0f);
+          auto inst = swapped ? R(R_A0, R_V0, dest) : R(R_V0, R_A0, dest);
+          inst.r.funct = CPU::InstructionFunct::and_;
+          CPU::PGXP::CPU_AND_(inst, swapped ? 0xFFFF7FFF : shifted, swapped ? shifted : 0xFFFF7FFF);
+          EXPECT_EQ(Get(dest).value, shifted & 0xFFFF7FFF);
+          EXPECT_NEAR(Get(dest).x, (static_cast<float>(x) + 0.25f) * 0.5f, TOLERANCE);
+          EXPECT_NEAR(Get(dest).y, (static_cast<float>(static_cast<s16>(y)) + 0.5f) * 0.5f, TOLERANCE);
+          EXPECT_EQ(Get(dest).flags & VALID_ALL, VALID_ALL);
+          EXPECT_EQ(Get(dest).z, 160.0f);
+        }
+      }
+    }
+  }
+
+  auto inst = R(R_V0, R_A0, R_V1);
+  inst.r.funct = CPU::InstructionFunct::and_;
+  Set(R_A0, 0xFFFF7FFF, 32767.0f, -1.0f, VALID_XY, 0.0f);
+
+  // Precise X can be over a pixel from native.
+  Set(R_V0, 0x01030103, 260.00073f, 259.1054f);
+  CPU::PGXP::CPU_SRA(R(0, R_V0, R_V0, 1), 0x01030103);
+  CPU::PGXP::CPU_AND_(inst, 0x00818081, 0xFFFF7FFF);
+  EXPECT_NEAR(Get(R_V1).x, 260.00073 * 0.5, TOLERANCE);
+  EXPECT_NEAR(Get(R_V1).y, 259.1054 * 0.5, TOLERANCE);
+
+  // When Y is only sign bits after the shift, its fraction is in X, so neither can be split out.
+  Set(R_V0, 0x00010064, 100.25f, 1.5f);
+  CPU::PGXP::CPU_SRA(R(0, R_V0, R_V0, 1), 0x00010064);
+  CPU::PGXP::CPU_AND_(inst, 0x00008032, 0xFFFF7FFF);
+  EXPECT_EQ(Get(R_V1).x, 50.0f);
+  EXPECT_EQ(Get(R_V1).y, 0.0f);
+
+  // Extracting a low bitfield doesn't clear bits that a shift moved in.
+  Set(R_V0, 0xFFF8FFE2, -28.99591f, -7.7224426f);
+  CPU::PGXP::CPU_AND_(inst, 0xFFF8FFE2, 0xFFFF0001);
+  EXPECT_NEAR(Get(R_V1).y, -7.7224426, TOLERANCE);
+
+  // Values that aren't from a 3D vertex keep the native upper half.
+  Set(R_V0, 0x0071802B, -32725.0f, 113.0f, VALID_XY, 0.0f);
+  CPU::PGXP::CPU_AND_(inst, 0x0071802B, 0xFFFF7FFF);
+  EXPECT_EQ(Get(R_V1).y, 113.0f);
+}
+
 TEST_F(PGXPTest, ORIKeepsUnchangedLowHalf)
 {
   Set(R_V0, 0x00640064, 100.25f, 100.5f);
