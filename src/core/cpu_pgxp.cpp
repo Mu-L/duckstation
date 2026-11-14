@@ -74,6 +74,7 @@ static const PGXPValue& ValidateAndLoadMem(u32 addr, u32 value);
 static void ValidateAndLoadMem16(PGXPValue& dest, u32 addr, u32 value, bool sign);
 
 static void CPU_MTC2(u32 reg, const PGXPValue& value, u32 val);
+template<InstructionFunct funct>
 static void CPU_BITWISE(Instruction instr, u32 rdVal, u32 rsVal, u32 rtVal);
 static void CPU_SLL(Instruction instr, u32 rtVal, u32 sh);
 static void CPU_SRx(Instruction instr, u32 rtVal, u32 sh, bool sign, bool is_variable);
@@ -1535,6 +1536,7 @@ void CPU::PGXP::CPU_SUB(Instruction instr, u32 rsVal, u32 rtVal)
   GetRdValue(instr) = prdVal;
 }
 
+template<CPU::InstructionFunct funct>
 ALWAYS_INLINE_RELEASE void CPU::PGXP::CPU_BITWISE(Instruction instr, u32 rdVal, u32 rsVal, u32 rtVal)
 {
   // Rd = Rs & Rt
@@ -1569,18 +1571,20 @@ ALWAYS_INLINE_RELEASE void CPU::PGXP::CPU_BITWISE(Instruction instr, u32 rdVal, 
   // for 3D values, clearing the top bits of a shift by 1-4, and when Y isn't only sign bits, otherwise the shift has
   // put the fraction of Y in X. An unshifted vertex with negative X looks the same, and its sign extension is taken
   // as Y's remainder, but no game has been seen to mask one like this.
-  const bool rt_is_mask = (HIWORD_U16(rtVal) == 0xFFFF);
-  const u32 maskVal = rt_is_mask ? rtVal : rsVal;
-  const u32 srcVal = rt_is_mask ? rsVal : rtVal;
-  const PGXPValue& src = rt_is_mask ? prsVal : prtVal;
-  const u16 mask = LOWORD_U16(maskVal);
-  if (instr.r.funct == InstructionFunct::and_ && HIWORD_U16(maskVal) == 0xFFFF && mask >= 0x0FFF && mask != 0xFFFF &&
-      (mask & (mask + 1)) == 0 && HIWORD_S16(srcVal) != 0 && HIWORD_S16(srcVal) != -1 &&
-      (src.flags & VALID_ALL) == VALID_ALL)
+  if constexpr (funct == InstructionFunct::and_)
   {
-    x = static_cast<float>(LOWORD_S16(rdVal)) + (src.x - static_cast<float>(LOWORD_S16(srcVal)));
-    y = src.y + static_cast<float>(LOWORD_U16(srcVal) & ~mask) / static_cast<float>(USHRT_MAX + 1);
-    x_src = y_src = &src;
+    const bool rt_is_mask = (HIWORD_U16(rtVal) == 0xFFFF);
+    const u32 maskVal = rt_is_mask ? rtVal : rsVal;
+    const u32 srcVal = rt_is_mask ? rsVal : rtVal;
+    const PGXPValue& src = rt_is_mask ? prsVal : prtVal;
+    const u16 mask = LOWORD_U16(maskVal);
+    if (HIWORD_U16(maskVal) == 0xFFFF && mask >= 0x0FFF && mask != 0xFFFF && (mask & (mask + 1)) == 0 &&
+        HIWORD_S16(srcVal) != 0 && HIWORD_S16(srcVal) != -1 && (src.flags & VALID_ALL) == VALID_ALL)
+    {
+      x = static_cast<float>(LOWORD_S16(rdVal)) + (src.x - static_cast<float>(LOWORD_S16(srcVal)));
+      y = src.y + static_cast<float>(LOWORD_U16(srcVal) & ~mask) / static_cast<float>(USHRT_MAX + 1);
+      x_src = y_src = &src;
+    }
   }
 
   // An exact zero has no precision to give, e.g. to a not, but a zero result from one is exact. Except with NOR, where
@@ -1590,10 +1594,9 @@ ALWAYS_INLINE_RELEASE void CPU::PGXP::CPU_BITWISE(Instruction instr, u32 rdVal, 
   const u32 src_flags = (rs_zero ? 0 : prsVal.flags) | (rt_zero ? 0 : prtVal.flags);
 
   // Why not write directly to prdVal? Because it might be the same as the source.
-  u32 flags =
-    ((src_flags & VALID_XY) || (rdVal == 0 && (rs_zero || rt_zero) && instr.r.funct != InstructionFunct::nor)) ?
-      (VALID_XY | VALID_TAINTED_Z) :
-      0;
+  u32 flags = ((src_flags & VALID_XY) || (rdVal == 0 && (rs_zero || rt_zero) && funct != InstructionFunct::nor)) ?
+                (VALID_XY | VALID_TAINTED_Z) :
+                0;
   float z;
   SelectZ(z, flags, prsVal, prtVal);
 
@@ -1616,7 +1619,7 @@ void CPU::PGXP::CPU_AND_(Instruction instr, u32 rsVal, u32 rtVal)
 
   // Rd = Rs & Rt
   const u32 rdVal = rsVal & rtVal;
-  CPU_BITWISE(instr, rdVal, rsVal, rtVal);
+  CPU_BITWISE<InstructionFunct::and_>(instr, rdVal, rsVal, rtVal);
 }
 
 void CPU::PGXP::CPU_OR_(Instruction instr, u32 rsVal, u32 rtVal)
@@ -1631,7 +1634,7 @@ void CPU::PGXP::CPU_OR_(Instruction instr, u32 rsVal, u32 rtVal)
   else if (rsVal == 0)
     CPU_MOVE(static_cast<u32>(instr.r.rd.GetValue()), static_cast<u32>(instr.r.rt.GetValue()), rtVal);
   else
-    CPU_BITWISE(instr, rsVal | rtVal, rsVal, rtVal);
+    CPU_BITWISE<InstructionFunct::or_>(instr, rsVal | rtVal, rsVal, rtVal);
 }
 
 void CPU::PGXP::CPU_XOR_(Instruction instr, u32 rsVal, u32 rtVal)
@@ -1641,13 +1644,13 @@ void CPU::PGXP::CPU_XOR_(Instruction instr, u32 rsVal, u32 rtVal)
   // Rd = Rs ^ Rt
   // See CPU_OR_(). XOR with itself is exactly zero, even when the source is natively zero.
   if (instr.r.rs == instr.r.rt)
-    CPU_BITWISE(instr, 0, rsVal, rtVal);
+    CPU_BITWISE<InstructionFunct::xor_>(instr, 0, rsVal, rtVal);
   else if (rtVal == 0 && !IsExactZero(g_state.pgxp_gpr[static_cast<u8>(instr.r.rs.GetValue())], rsVal))
     CPU_MOVE(static_cast<u32>(instr.r.rd.GetValue()), static_cast<u32>(instr.r.rs.GetValue()), rsVal);
   else if (rsVal == 0)
     CPU_MOVE(static_cast<u32>(instr.r.rd.GetValue()), static_cast<u32>(instr.r.rt.GetValue()), rtVal);
   else
-    CPU_BITWISE(instr, rsVal ^ rtVal, rsVal, rtVal);
+    CPU_BITWISE<InstructionFunct::xor_>(instr, rsVal ^ rtVal, rsVal, rtVal);
 }
 
 void CPU::PGXP::CPU_NOR(Instruction instr, u32 rsVal, u32 rtVal)
@@ -1656,7 +1659,7 @@ void CPU::PGXP::CPU_NOR(Instruction instr, u32 rsVal, u32 rtVal)
 
   // Rd = Rs NOR Rt
   const u32 rdVal = ~(rsVal | rtVal);
-  CPU_BITWISE(instr, rdVal, rsVal, rtVal);
+  CPU_BITWISE<InstructionFunct::nor>(instr, rdVal, rsVal, rtVal);
 }
 
 void CPU::PGXP::CPU_SLT(Instruction instr, u32 rsVal, u32 rtVal)
